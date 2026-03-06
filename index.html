@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quince | Category Expansion Tool</title>
+
+  <!-- Tailwind CDN (must come before config) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            warm: {
+              50:  '#faf8f5',
+              100: '#f0ebe2',
+              200: '#e0d6c8',
+              300: '#c9b89a',
+              400: '#b09070',
+              500: '#8b7355',
+              600: '#6b5840',
+              700: '#4a3728',
+              800: '#2d2118',
+            }
+          },
+          fontFamily: {
+            serif: ['Cormorant Garamond', 'Georgia', 'serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+    @keyframes fillBar {
+      from { width: 0%; }
+      to   { width: var(--target-pct); }
+    }
+    @keyframes spinAnim {
+      to { transform: rotate(360deg); }
+    }
+
+    .fade-up {
+      animation: fadeUp 0.45s ease both;
+    }
+    .score-bar-fill {
+      animation: fillBar 1.15s cubic-bezier(0.4, 0, 0.2, 1) both;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid #e0d6c8;
+      border-top-color: #8b7355;
+      animation: spinAnim 0.85s linear infinite;
+    }
+
+    /* Smooth step text transition */
+    .step-text { transition: opacity 0.35s ease; }
+  </style>
+</head>
+
+<body class="bg-warm-50 min-h-screen">
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ─── Data ────────────────────────────────────────────────────────────────
+
+    const DIMENSIONS = [
+      { key: 'markup_intensity',           label: 'Markup Intensity',           desc: 'Premium vs. factory cost gap'      },
+      { key: 'factory_direct_feasibility', label: 'Factory-Direct Feasibility', desc: 'Ease of direct sourcing'            },
+      { key: 'online_purchase_comfort',    label: 'Online Purchase Comfort',    desc: 'DTC consumer readiness'             },
+      { key: 'demand_signal_strength',     label: 'Demand Signal Strength',     desc: 'Consumer interest & trends'         },
+      { key: 'competitive_density',        label: 'Competitive Density',        desc: '10 = low competition (inverted)'    },
+    ];
+
+    const EXAMPLES = [
+      "men's dress shoes", "olive oil", "vitamins",
+      "leather wallets", "silk pajamas", "running shoes",
+    ];
+
+    const LOADING_STEPS = [
+      'Searching for market data…',
+      'Analyzing markup patterns…',
+      'Evaluating sourcing networks…',
+      'Scoring demand signals…',
+      'Synthesizing recommendation…',
+    ];
+
+    const SYSTEM_PROMPT = `You are a senior strategy analyst for Quince, a direct-to-consumer brand that sells luxury-quality products at factory-direct prices by cutting out the middlemen. Your job is to evaluate whether Quince should enter a new product category.
+
+Use web search to thoroughly research:
+- Retail markup vs. estimated factory/wholesale cost for the category
+- Manufacturer networks and direct sourcing feasibility
+- Consumer willingness to buy this category online without touching it first
+- Current search trends, social buzz, and press coverage
+- Existing affordable-luxury competitors in this space
+
+After your research, respond with ONLY valid JSON — no markdown fences, no preamble, no explanation. The response must be directly parseable by JSON.parse(). Use exactly this structure:
+
+{
+  "scores": {
+    "markup_intensity":           { "score": <integer 1-10>, "rationale": "<2 sentences>" },
+    "factory_direct_feasibility": { "score": <integer 1-10>, "rationale": "<2 sentences>" },
+    "online_purchase_comfort":    { "score": <integer 1-10>, "rationale": "<2 sentences>" },
+    "demand_signal_strength":     { "score": <integer 1-10>, "rationale": "<2 sentences>" },
+    "competitive_density":        { "score": <integer 1-10>, "rationale": "<2 sentences — note: score is INVERTED, 10 = very low competition>" }
+  },
+  "overall_score": <weighted average, one decimal>,
+  "verdict": "<ENTER|WATCH|PASS>",
+  "strategic_rationale": "<3–4 sentences in Quince's brand voice explaining the recommendation>",
+  "comparable_quince_entry": {
+    "category": "<a real Quince product category, e.g. cashmere sweaters, fine jewelry, linen sheets>",
+    "comparison": "<1–2 sentences comparing this new category to that past entry>"
+  }
+}
+
+Scoring guide:
+- markup_intensity (1–10): How large is the gap between typical retail price and factory/wholesale cost? 10 = massive markup opportunity (e.g. cashmere, fine jewelry). 1 = commoditized, thin margins.
+- factory_direct_feasibility (1–10): How accessible are direct manufacturer networks? 10 = well-established sourcing hubs. 1 = fragmented or highly regulated supply chain.
+- online_purchase_comfort (1–10): How comfortable are consumers buying this online without trying first? 10 = high (e.g. t-shirts, bedding). 1 = low (e.g. bespoke suits, prescription eyewear).
+- demand_signal_strength (1–10): Is consumer interest trending up? 10 = strong signals across search + social + press. 1 = declining or stagnant category.
+- competitive_density (1–10, INVERTED): 10 = few affordable-luxury competitors (great for Quince). 1 = extremely crowded, dominated by value players.
+
+Verdict thresholds:
+- ENTER: overall_score ≥ 7.0
+- WATCH: 4.0 ≤ overall_score < 7.0
+- PASS:  overall_score < 4.0
+
+Write strategic_rationale in Quince's brand voice: confident, direct, democratizing quality without compromise. Reference specific insights from your web research.`;
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    function scoreColor(s) {
+      if (s >= 7) return '#4a7c5c';
+      if (s >= 4) return '#8b6914';
+      return '#a05252';
+    }
+
+    function verdictCfg(v) {
+      return {
+        ENTER: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: '#4a7c5c' },
+        WATCH: { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: '#8b6914' },
+        PASS:  { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',     dot: '#a05252' },
+      }[v] || { bg: 'bg-warm-100', text: 'text-warm-700', border: 'border-warm-200', dot: '#8b7355' };
+    }
+
+    // ─── Components ──────────────────────────────────────────────────────────
+
+    function ScoreBar({ score, delay }) {
+      const pct = (score / 10) * 100;
+      return (
+        <div className="w-full h-1.5 bg-warm-100 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full score-bar-fill"
+            style={{
+              '--target-pct': `${pct}%`,
+              animationDelay: `${delay}s`,
+              backgroundColor: scoreColor(score),
+            }}
+          />
+        </div>
+      );
+    }
+
+    function ScoreCard({ dim, scoreData, index }) {
+      const color = scoreColor(scoreData.score);
+      return (
+        <div
+          className="fade-up bg-white border border-warm-100 rounded-xl p-5 flex flex-col gap-3"
+          style={{ animationDelay: `${0.05 + index * 0.09}s` }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-warm-700 leading-snug">{dim.label}</p>
+              <p className="text-xs text-warm-400 mt-0.5">{dim.desc}</p>
+            </div>
+            <div className="shrink-0 text-right leading-none">
+              <span className="font-serif text-2xl" style={{ color }}>{scoreData.score}</span>
+              <span className="text-warm-300 text-xs">/10</span>
+            </div>
+          </div>
+          <ScoreBar score={scoreData.score} delay={0.3 + index * 0.1} />
+          <p className="text-xs text-warm-500 leading-relaxed">{scoreData.rationale}</p>
+        </div>
+      );
+    }
+
+    function VerdictBadge({ verdict }) {
+      const cfg = verdictCfg(verdict);
+      return (
+        <span
+          className={`inline-flex items-center gap-1.5 px-4 py-1 rounded-full text-xs font-semibold tracking-[0.12em] uppercase border ${cfg.bg} ${cfg.text} ${cfg.border}`}
+        >
+          <span
+            className="inline-block w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: cfg.dot }}
+          />
+          {verdict}
+        </span>
+      );
+    }
+
+    function LoadingState({ category }) {
+      const [step, setStep] = useState(0);
+      const [visible, setVisible] = useState(true);
+
+      useEffect(() => {
+        const cycle = setInterval(() => {
+          setVisible(false);
+          setTimeout(() => {
+            setStep(s => (s + 1) % LOADING_STEPS.length);
+            setVisible(true);
+          }, 300);
+        }, 2400);
+        return () => clearInterval(cycle);
+      }, []);
+
+      return (
+        <div className="fade-up text-center py-20">
+          <div className="spinner mx-auto mb-8" />
+          <p className="font-serif text-xl text-warm-700 mb-3">
+            Researching <em>{category}</em>
+          </p>
+          <p
+            className="step-text text-warm-400 text-sm h-5"
+            style={{ opacity: visible ? 1 : 0 }}
+          >
+            {LOADING_STEPS[step]}
+          </p>
+        </div>
+      );
+    }
+
+    function ResultsPanel({ result, category, onReset }) {
+      return (
+        <div className="space-y-4">
+
+          {/* Header */}
+          <div className="fade-up flex flex-wrap items-end justify-between gap-4 mb-2">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-warm-400 mb-1.5">Category Analysis</p>
+              <h2 className="font-serif text-2xl text-warm-800 capitalize leading-tight">{category}</h2>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <p className="text-xs text-warm-400 uppercase tracking-widest">Overall Score</p>
+              <div className="flex items-baseline gap-3">
+                <span className="font-serif text-4xl text-warm-700 leading-none">
+                  {result.overall_score}
+                </span>
+                <VerdictBadge verdict={result.verdict} />
+              </div>
+            </div>
+          </div>
+
+          {/* Score grid — 2 cols on sm+, last card spans full width if 5 cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {DIMENSIONS.map((dim, i) => (
+              <div
+                key={dim.key}
+                className={i === 4 ? 'sm:col-span-2' : ''}
+              >
+                <ScoreCard
+                  dim={dim}
+                  scoreData={result.scores[dim.key]}
+                  index={i}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Strategic rationale */}
+          <div
+            className="fade-up bg-white border border-warm-100 rounded-xl p-6"
+            style={{ animationDelay: '0.55s' }}
+          >
+            <p className="text-xs uppercase tracking-widest text-warm-400 mb-3">Strategic Rationale</p>
+            <p className="text-warm-700 leading-relaxed text-sm">{result.strategic_rationale}</p>
+          </div>
+
+          {/* Comparable Quince entry */}
+          <div
+            className="fade-up bg-warm-50 border border-warm-100 rounded-xl px-6 py-5"
+            style={{ animationDelay: '0.65s' }}
+          >
+            <p className="text-xs uppercase tracking-widest text-warm-400 mb-2">Comparable Quince Entry</p>
+            <p className="font-serif text-lg text-warm-700 capitalize mb-1">
+              {result.comparable_quince_entry.category}
+            </p>
+            <p className="text-warm-500 text-sm leading-relaxed">
+              {result.comparable_quince_entry.comparison}
+            </p>
+          </div>
+
+          {/* Reset */}
+          <div
+            className="fade-up text-center pt-3"
+            style={{ animationDelay: '0.75s' }}
+          >
+            <button
+              onClick={onReset}
+              className="text-warm-400 text-xs hover:text-warm-600 underline underline-offset-4 transition-colors tracking-wide"
+            >
+              Analyze another category →
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Main App ─────────────────────────────────────────────────────────────
+
+    function App() {
+      const [apiKey,   setApiKey]   = useState('');
+      const [category, setCategory] = useState('');
+      const [status,   setStatus]   = useState('idle'); // idle | loading | success | error
+      const [result,   setResult]   = useState(null);
+      const [errorMsg, setErrorMsg] = useState('');
+      const catRef = useRef(null);
+
+      function reset() {
+        setCategory('');
+        setStatus('idle');
+        setResult(null);
+        setErrorMsg('');
+        setTimeout(() => catRef.current?.focus(), 60);
+      }
+
+      async function analyze() {
+        const cat = category.trim();
+        if (!cat || !apiKey.trim()) return;
+
+        setStatus('loading');
+        setErrorMsg('');
+        setResult(null);
+
+        try {
+          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey.trim(),
+              'anthropic-version': '2023-06-01',
+              'anthropic-beta': 'web-search-2025-03-05',
+              // Required for direct browser access to the Anthropic API
+              'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 4096,
+              tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+              system: SYSTEM_PROMPT,
+              messages: [{
+                role: 'user',
+                content: `Evaluate this product category for Quince: "${cat}"\n\nResearch it thoroughly using web search, then return your analysis as JSON only — no markdown, no preamble.`,
+              }],
+            }),
+          });
+
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error?.message || `API error ${resp.status}`);
+          }
+
+          const data = await resp.json();
+
+          // Find the last text block (may follow web_search_tool_result blocks)
+          const textBlocks = (data.content || []).filter(b => b.type === 'text');
+          if (!textBlocks.length) {
+            throw new Error('No text response received from the API. Please try again.');
+          }
+
+          let jsonStr = textBlocks[textBlocks.length - 1].text.trim();
+          // Strip any accidental markdown fences
+          jsonStr = jsonStr
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+          const parsed = JSON.parse(jsonStr);
+
+          if (!parsed.scores || !parsed.verdict || typeof parsed.overall_score !== 'number') {
+            throw new Error('Unexpected response format. Please try again.');
+          }
+
+          setResult(parsed);
+          setStatus('success');
+        } catch (err) {
+          console.error('Quince tool error:', err);
+          setErrorMsg(err.message || 'Something went wrong. Please try again.');
+          setStatus('error');
+        }
+      }
+
+      const canSubmit = category.trim().length > 0 && apiKey.trim().length > 0;
+
+      return (
+        <div className="min-h-screen bg-warm-50">
+
+          {/* Navbar */}
+          <header className="bg-white border-b border-warm-100 sticky top-0 z-10">
+            <div className="max-w-2xl mx-auto px-6 h-14 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="font-serif text-xl tracking-[0.22em] text-warm-800 uppercase">
+                  Quince
+                </span>
+                <span className="hidden sm:block w-px h-4 bg-warm-200" />
+                <span className="hidden sm:block text-xs text-warm-400 tracking-widest uppercase">
+                  Strategy Tool
+                </span>
+              </div>
+              <span className="text-xs text-warm-300 hidden sm:block">
+                Category Expansion Analyzer
+              </span>
+            </div>
+          </header>
+
+          {/* Main */}
+          <main className="max-w-2xl mx-auto px-6 py-10">
+
+            {/* Input form */}
+            {(status === 'idle' || status === 'error') && (
+              <div className="space-y-8">
+
+                <div className="fade-up">
+                  <h1 className="font-serif text-3xl sm:text-4xl text-warm-800 leading-tight mb-3">
+                    Should Quince enter<br className="hidden sm:block" /> this category?
+                  </h1>
+                  <p className="text-warm-500 text-sm leading-relaxed max-w-md">
+                    Enter a product category and we'll research it in real time — scoring markup
+                    opportunity, sourcing feasibility, DTC fit, demand signals, and competitive density.
+                  </p>
+                </div>
+
+                <div className="fade-up space-y-4" style={{ animationDelay: '0.1s' }}>
+
+                  {/* API key */}
+                  <div>
+                    <label className="block text-xs uppercase tracking-widest text-warm-500 mb-2">
+                      Anthropic API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={e => setApiKey(e.target.value)}
+                      placeholder="sk-ant-…"
+                      className="w-full bg-white border border-warm-200 rounded-lg px-4 py-2.5 text-sm font-mono text-warm-700 placeholder-warm-300 focus:outline-none focus:border-warm-400 focus:ring-1 focus:ring-warm-200 transition-colors"
+                    />
+                    <p className="mt-1.5 text-xs text-warm-400">
+                      Your key is used only for this request and never stored.
+                    </p>
+                  </div>
+
+                  {/* Category input */}
+                  <div>
+                    <label className="block text-xs uppercase tracking-widest text-warm-500 mb-2">
+                      Product Category
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        ref={catRef}
+                        type="text"
+                        value={category}
+                        onChange={e => setCategory(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && canSubmit && analyze()}
+                        placeholder="e.g. men's dress shoes, olive oil, vitamins…"
+                        autoFocus
+                        className="flex-1 bg-white border border-warm-200 rounded-lg px-4 py-2.5 text-sm text-warm-700 placeholder-warm-300 focus:outline-none focus:border-warm-400 focus:ring-1 focus:ring-warm-200 transition-colors"
+                      />
+                      <button
+                        onClick={analyze}
+                        disabled={!canSubmit}
+                        className="px-5 py-2.5 bg-warm-700 hover:bg-warm-800 text-white rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                      >
+                        Analyze
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Error message */}
+                  {errorMsg && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 leading-relaxed">
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  {/* Example chips */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 pt-1">
+                    <span className="text-xs text-warm-400">Try:</span>
+                    {EXAMPLES.map(ex => (
+                      <button
+                        key={ex}
+                        onClick={() => setCategory(ex)}
+                        className="text-xs text-warm-500 hover:text-warm-700 underline underline-offset-2 transition-colors"
+                      >
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {status === 'loading' && <LoadingState category={category} />}
+
+            {status === 'success' && result && (
+              <ResultsPanel result={result} category={category} onReset={reset} />
+            )}
+
+          </main>
+
+          <footer className="max-w-2xl mx-auto px-6 pb-10 text-center">
+            <p className="text-xs text-warm-200">Internal use only · Quince Strategy &amp; Ops</p>
+          </footer>
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
