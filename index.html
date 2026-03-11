@@ -327,39 +327,12 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
 
     // ─── Main App ─────────────────────────────────────────────────────────────
 
-    const LS_KEY = 'quince_api_key';
-
-    // Set this to your Anthropic API key to skip the key-entry prompt entirely.
-    // Leave as empty string '' to fall back to localStorage / manual entry.
-    const CONFIGURED_API_KEY = '';
-
     function App() {
-      const [apiKey,       setApiKey]       = useState(() => CONFIGURED_API_KEY || localStorage.getItem(LS_KEY) || '');
-      const [keyInput,     setKeyInput]     = useState('');
-      const [showKeySetup, setShowKeySetup] = useState(() => !CONFIGURED_API_KEY && !localStorage.getItem(LS_KEY));
-      const [category,     setCategory]     = useState('');
-      const [status,       setStatus]       = useState('idle');
-      const [result,       setResult]       = useState(null);
-      const [errorMsg,     setErrorMsg]     = useState('');
+      const [category, setCategory] = useState('');
+      const [status,   setStatus]   = useState('idle');
+      const [result,   setResult]   = useState(null);
+      const [errorMsg, setErrorMsg] = useState('');
       const catRef = useRef(null);
-
-      function saveKey() {
-        const k = keyInput.trim();
-        if (!k) return;
-        localStorage.setItem(LS_KEY, k);
-        setApiKey(k);
-        setShowKeySetup(false);
-        setTimeout(() => catRef.current?.focus(), 60);
-      }
-
-      function clearKey() {
-        localStorage.removeItem(LS_KEY);
-        setApiKey('');
-        setKeyInput('');
-        setShowKeySetup(true);
-        setStatus('idle');
-        setResult(null);
-      }
 
       function reset() {
         setCategory('');
@@ -369,59 +342,18 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
         setTimeout(() => catRef.current?.focus(), 60);
       }
 
-      // One-time key setup screen
-      if (showKeySetup) {
-        return (
-          <div className="min-h-screen bg-warm-50 flex items-center justify-center px-6">
-            <div className="w-full max-w-sm fade-up space-y-6">
-              <div>
-                <span className="font-serif text-2xl tracking-[0.22em] text-warm-800 uppercase">Quince</span>
-                <h2 className="mt-4 font-serif text-2xl text-warm-800">One-time setup</h2>
-                <p className="mt-1 text-sm text-warm-500">Enter your Anthropic API key. It will be saved in your browser and never asked again.</p>
-              </div>
-              <div>
-                <input
-                  type="password"
-                  value={keyInput}
-                  onChange={e => setKeyInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && saveKey()}
-                  placeholder="sk-ant-…"
-                  autoFocus
-                  className="w-full bg-white border border-warm-200 rounded-lg px-4 py-2.5 text-sm font-mono text-warm-700 placeholder-warm-300 focus:outline-none focus:border-warm-400 focus:ring-1 focus:ring-warm-200 transition-colors"
-                />
-              </div>
-              <button
-                onClick={saveKey}
-                disabled={!keyInput.trim()}
-                className="w-full px-5 py-2.5 bg-warm-700 hover:bg-warm-800 text-white rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Save &amp; continue →
-              </button>
-            </div>
-          </div>
-        );
-      }
-
       async function analyze() {
         const cat = category.trim();
-        const key = CONFIGURED_API_KEY || apiKey.trim();
-        if (!cat || !key) return;
+        if (!cat) return;
 
         setStatus('loading');
         setErrorMsg('');
         setResult(null);
 
         try {
-          const resp = await fetch('https://api.anthropic.com/v1/messages', {
+          const resp = await fetch('/api/analyze', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': key,
-              'anthropic-version': '2023-06-01',
-              'anthropic-beta': 'web-search-2025-03-05',
-              // Required for direct browser access to the Anthropic API
-              'anthropic-dangerous-direct-browser-access': 'true',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: 'claude-sonnet-4-20250514',
               max_tokens: 1500,
@@ -481,7 +413,7 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
         }
       }
 
-      const canSubmit = category.trim().length > 0 && !!(CONFIGURED_API_KEY || apiKey.trim());
+      const canSubmit = category.trim().length > 0;
 
       return (
         <div className="min-h-screen bg-warm-50">
@@ -582,11 +514,8 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
 
           </main>
 
-          <footer className="max-w-2xl mx-auto px-6 pb-10 text-center space-y-1">
+          <footer className="max-w-2xl mx-auto px-6 pb-10 text-center">
             <p className="text-xs text-warm-200">Internal use only · Quince Strategy &amp; Ops</p>
-            <button onClick={clearKey} className="text-xs text-warm-200 hover:text-warm-400 underline underline-offset-2 transition-colors">
-              reset API key
-            </button>
           </footer>
 
         </div>
