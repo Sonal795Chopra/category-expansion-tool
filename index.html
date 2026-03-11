@@ -329,10 +329,14 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
 
     const LS_KEY = 'quince_api_key';
 
+    // Set this to your Anthropic API key to skip the key-entry prompt entirely.
+    // Leave as empty string '' to fall back to localStorage / manual entry.
+    const CONFIGURED_API_KEY = '';
+
     function App() {
-      const [apiKey,       setApiKey]       = useState(() => localStorage.getItem(LS_KEY) || '');
+      const [apiKey,       setApiKey]       = useState(() => CONFIGURED_API_KEY || localStorage.getItem(LS_KEY) || '');
       const [keyInput,     setKeyInput]     = useState('');
-      const [showKeySetup, setShowKeySetup] = useState(() => !localStorage.getItem(LS_KEY));
+      const [showKeySetup, setShowKeySetup] = useState(() => !CONFIGURED_API_KEY && !localStorage.getItem(LS_KEY));
       const [category,     setCategory]     = useState('');
       const [status,       setStatus]       = useState('idle');
       const [result,       setResult]       = useState(null);
@@ -400,7 +404,8 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
 
       async function analyze() {
         const cat = category.trim();
-        if (!cat || !apiKey.trim()) return;
+        const key = CONFIGURED_API_KEY || apiKey.trim();
+        if (!cat || !key) return;
 
         setStatus('loading');
         setErrorMsg('');
@@ -411,7 +416,7 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-api-key': apiKey.trim(),
+              'x-api-key': key,
               'anthropic-version': '2023-06-01',
               'anthropic-beta': 'web-search-2025-03-05',
               // Required for direct browser access to the Anthropic API
@@ -465,7 +470,7 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
         }
       }
 
-      const canSubmit = category.trim().length > 0;
+      const canSubmit = category.trim().length > 0 && !!(CONFIGURED_API_KEY || apiKey.trim());
 
       return (
         <div className="min-h-screen bg-warm-50">
