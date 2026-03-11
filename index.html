@@ -448,12 +448,13 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
           }
 
           let jsonStr = textBlocks[textBlocks.length - 1].text.trim();
-          // Strip any accidental markdown fences
-          jsonStr = jsonStr
-            .replace(/^```json\s*/i, '')
-            .replace(/^```\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
+          // Extract JSON object — handles markdown fences and any preamble text
+          const jsonStart = jsonStr.indexOf('{');
+          const jsonEnd   = jsonStr.lastIndexOf('}');
+          if (jsonStart === -1 || jsonEnd === -1) {
+            throw new Error('No JSON found in response. Please try again.');
+          }
+          jsonStr = jsonStr.slice(jsonStart, jsonEnd + 1);
 
           const parsed = JSON.parse(jsonStr);
 
