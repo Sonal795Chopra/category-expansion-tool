@@ -396,7 +396,7 @@ Write strategic_rationale in Quince's brand voice: confident, direct, democratiz
 
           // Strip <cite> tags injected by the web-search feature
           function stripCites(obj) {
-            if (typeof obj === 'string') return obj.replace(/<cite[^>]*>(.*?)<\/cite>/gi, '$1');
+            if (typeof obj === 'string') return obj.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/gi, '$1');
             if (Array.isArray(obj)) return obj.map(stripCites);
             if (obj && typeof obj === 'object') {
               return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, stripCites(v)]));
